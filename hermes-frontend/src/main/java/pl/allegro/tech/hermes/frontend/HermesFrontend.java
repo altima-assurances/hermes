@@ -1,5 +1,6 @@
 package pl.allegro.tech.hermes.frontend;
 
+import com.codahale.metrics.MetricRegistry;
 import com.google.common.collect.Lists;
 import org.glassfish.hk2.api.ServiceLocator;
 import org.glassfish.hk2.utilities.Binder;
@@ -14,6 +15,7 @@ import pl.allegro.tech.hermes.common.hook.Hook;
 import pl.allegro.tech.hermes.common.hook.HooksHandler;
 import pl.allegro.tech.hermes.common.hook.ServiceAwareHook;
 import pl.allegro.tech.hermes.common.kafka.KafkaNamesMapper;
+import pl.allegro.tech.hermes.common.ssl.SslContextFactory;
 import pl.allegro.tech.hermes.frontend.di.FrontendBinder;
 import pl.allegro.tech.hermes.frontend.di.LoggerConfiguration;
 import pl.allegro.tech.hermes.frontend.di.PersistentBufferExtension;
@@ -23,15 +25,13 @@ import pl.allegro.tech.hermes.frontend.listeners.BrokerErrorListener;
 import pl.allegro.tech.hermes.frontend.listeners.BrokerListeners;
 import pl.allegro.tech.hermes.frontend.listeners.BrokerTimeoutListener;
 import pl.allegro.tech.hermes.frontend.publishing.metadata.HeadersPropagator;
-import pl.allegro.tech.hermes.frontend.server.AbstractShutdownHook;
-import pl.allegro.tech.hermes.frontend.server.HermesServer;
-import pl.allegro.tech.hermes.common.ssl.SslContextFactory;
-import pl.allegro.tech.hermes.frontend.server.TopicMetadataLoadingStartupHook;
-import pl.allegro.tech.hermes.frontend.server.TopicSchemaLoadingStartupHook;
-import pl.allegro.tech.hermes.frontend.server.WaitForKafkaStartupHook;
+import pl.allegro.tech.hermes.frontend.server.*;
 import pl.allegro.tech.hermes.frontend.server.auth.AuthenticationConfiguration;
 import pl.allegro.tech.hermes.frontend.services.HealthCheckService;
 import pl.allegro.tech.hermes.infrastructure.zookeeper.cache.ModelAwareZookeeperNotifyingCache;
+import pl.allegro.tech.hermes.metrics.PathsCompiler;
+import pl.allegro.tech.hermes.tracker.elasticsearch.ElasticsearchClientFactory;
+import pl.allegro.tech.hermes.tracker.elasticsearch.frontend.FrontendElasticsearchLogRepository;
 import pl.allegro.tech.hermes.tracker.frontend.LogRepository;
 import pl.allegro.tech.hermes.tracker.frontend.Trackers;
 
@@ -40,11 +40,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 
-import static pl.allegro.tech.hermes.common.config.Configs.FRONTEND_GRACEFUL_SHUTDOWN_ENABLED;
-import static pl.allegro.tech.hermes.common.config.Configs.FRONTEND_RESPONSE_ERROR_LOGGER_ENABLED;
-import static pl.allegro.tech.hermes.common.config.Configs.FRONTEND_STARTUP_TOPIC_METADATA_LOADING_ENABLED;
-import static pl.allegro.tech.hermes.common.config.Configs.FRONTEND_STARTUP_TOPIC_SCHEMA_LOADING_ENABLED;
-import static pl.allegro.tech.hermes.common.config.Configs.FRONTEND_STARTUP_WAIT_KAFKA_ENABLED;
+import static pl.allegro.tech.hermes.common.config.Configs.*;
 
 public final class HermesFrontend {
 
@@ -57,7 +53,31 @@ public final class HermesFrontend {
     private final Trackers trackers;
 
     public static void main(String[] args) throws Exception {
-        frontend().build().start();
+        Builder builder = frontend();
+
+        ElasticsearchClientFactory elasticFactory = new ElasticsearchClientFactory(
+                Integer.parseInt(System.getenv("TRACKER_ELASTICSEARCH_PORT")),
+                System.getenv("TRACKER_ELASTICSEARCH_CLUSTER_NAME"),
+                System.getenv("TRACKER_ELASTICSEARCH_HOSTS")
+        );
+
+        builder.withShutdownHook(elasticFactory::close);
+
+        builder.withLogRepository(serviceLocator -> {
+            ConfigFactory config = serviceLocator.getService(ConfigFactory.class);
+
+            return new FrontendElasticsearchLogRepository.Builder(
+                    elasticFactory.client(),
+                    serviceLocator.getService(PathsCompiler.class),
+                    serviceLocator.getService(MetricRegistry.class)
+            )
+                    .withClusterName(config.getStringProperty(KAFKA_CLUSTER_NAME))
+                    .withQueueSize(Integer.parseInt(System.getenv("TRACKER_ELASTICSEARCH_QUEUE_CAPACITY")))
+                    .withCommitInterval(Integer.parseInt(System.getenv("TRACKER_ELASTICSEARCH_COMMIT_INTERVAL")))
+                    .build();
+        });
+
+        builder.build().start();
     }
 
     private HermesFrontend(HooksHandler hooksHandler,
@@ -134,7 +154,7 @@ public final class HermesFrontend {
     private void startCaches(ServiceLocator locator) {
         try {
             locator.getService(ModelAwareZookeeperNotifyingCache.class).start();
-        } catch(Exception e) {
+        } catch (Exception e) {
             logger.error("Failed to startup Hermes Frontend", e);
         }
     }

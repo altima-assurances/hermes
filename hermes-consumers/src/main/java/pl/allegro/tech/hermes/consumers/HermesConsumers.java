@@ -1,11 +1,13 @@
 package pl.allegro.tech.hermes.consumers;
 
+import com.codahale.metrics.MetricRegistry;
 import org.glassfish.hk2.api.ServiceLocator;
 import org.glassfish.hk2.utilities.Binder;
 import org.glassfish.hk2.utilities.ServiceLocatorUtilities;
 import org.jvnet.hk2.component.MultiMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pl.allegro.tech.hermes.common.config.ConfigFactory;
 import pl.allegro.tech.hermes.common.hook.FlushLogsShutdownHook;
 import pl.allegro.tech.hermes.common.hook.HooksHandler;
 import pl.allegro.tech.hermes.consumers.consumer.oauth.client.OAuthClient;
@@ -18,12 +20,17 @@ import pl.allegro.tech.hermes.consumers.registry.ConsumerNodesRegistry;
 import pl.allegro.tech.hermes.consumers.supervisor.monitor.ConsumersRuntimeMonitor;
 import pl.allegro.tech.hermes.consumers.supervisor.workload.ConsumerAssignmentCache;
 import pl.allegro.tech.hermes.consumers.supervisor.workload.SupervisorController;
+import pl.allegro.tech.hermes.metrics.PathsCompiler;
 import pl.allegro.tech.hermes.tracker.consumers.LogRepository;
 import pl.allegro.tech.hermes.tracker.consumers.Trackers;
+import pl.allegro.tech.hermes.tracker.elasticsearch.ElasticsearchClientFactory;
+import pl.allegro.tech.hermes.tracker.elasticsearch.consumers.ConsumersElasticsearchLogRepository;
 
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
+
+import static pl.allegro.tech.hermes.common.config.Configs.KAFKA_CLUSTER_NAME;
 
 public class HermesConsumers {
 
@@ -45,7 +52,31 @@ public class HermesConsumers {
     private final HttpClientsWorkloadReporter httpClientsWorkloadReporter;
 
     public static void main(String... args) {
-        consumers().build().start();
+        HermesConsumersBuilder builder = consumers();
+
+        ElasticsearchClientFactory elasticFactory = new ElasticsearchClientFactory(
+                Integer.parseInt(System.getenv("TRACKER_ELASTICSEARCH_PORT")),
+                System.getenv("TRACKER_ELASTICSEARCH_CLUSTER_NAME"),
+                System.getenv("TRACKER_ELASTICSEARCH_HOSTS")
+        );
+
+        builder.withShutdownHook(elasticFactory::close);
+
+        builder.withLogRepository(serviceLocator -> {
+            ConfigFactory config = serviceLocator.getService(ConfigFactory.class);
+
+            return new ConsumersElasticsearchLogRepository.Builder(
+                    elasticFactory.client(),
+                    serviceLocator.getService(PathsCompiler.class),
+                    serviceLocator.getService(MetricRegistry.class)
+            )
+                    .withClusterName(config.getStringProperty(KAFKA_CLUSTER_NAME))
+                    .withQueueSize(Integer.parseInt(System.getenv("TRACKER_ELASTICSEARCH_QUEUE_CAPACITY")))
+                    .withCommitInterval(Integer.parseInt(System.getenv("TRACKER_ELASTICSEARCH_COMMIT_INTERVAL")))
+                    .build();
+        });
+
+        builder.build().start();
     }
 
     HermesConsumers(HooksHandler hooksHandler,

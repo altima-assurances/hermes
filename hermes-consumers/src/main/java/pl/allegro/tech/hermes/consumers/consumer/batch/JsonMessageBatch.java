@@ -9,7 +9,6 @@ import pl.allegro.tech.hermes.common.kafka.offset.PartitionOffset;
 import pl.allegro.tech.hermes.consumers.consumer.offset.SubscriptionPartitionOffset;
 import pl.allegro.tech.hermes.tracker.consumers.MessageMetadata;
 
-import javax.annotation.concurrent.NotThreadSafe;
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.time.Clock;
@@ -21,7 +20,6 @@ import java.util.stream.Collectors;
 import static com.google.common.base.Preconditions.checkState;
 import static pl.allegro.tech.hermes.consumers.consumer.offset.SubscriptionPartitionOffset.subscriptionPartitionOffset;
 
-@NotThreadSafe
 public class JsonMessageBatch implements MessageBatch {
 
     private final Clock clock;

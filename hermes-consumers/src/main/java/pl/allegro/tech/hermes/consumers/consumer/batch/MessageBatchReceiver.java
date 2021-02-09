@@ -16,7 +16,6 @@ import pl.allegro.tech.hermes.consumers.consumer.receiver.MessageReceiver;
 import pl.allegro.tech.hermes.tracker.consumers.MessageMetadata;
 import pl.allegro.tech.hermes.tracker.consumers.Trackers;
 
-import javax.annotation.concurrent.NotThreadSafe;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +27,6 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static pl.allegro.tech.hermes.consumers.consumer.Message.message;
 import static pl.allegro.tech.hermes.consumers.consumer.message.MessageConverter.toMessageMetadata;
 
-@NotThreadSafe
 public class MessageBatchReceiver {
 
     private static final Logger logger = LoggerFactory.getLogger(MessageBatchReceiver.class);

@@ -1,8 +1,8 @@
-FROM gradle:5.6.2-jdk11 AS builder
+FROM gradle:6.7-jdk11 AS builder
 
 COPY --chown=gradle:gradle . /home/gradle/src/
 WORKDIR /home/gradle/src/
-RUN ./gradlew clean distZip -Pdistribution
+RUN gradle clean distZip -Pdistribution
 
 FROM adoptopenjdk/openjdk11:alpine-jre
 

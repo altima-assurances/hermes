@@ -17,6 +17,14 @@
         </triggeringPolicy>
     </appender>
 
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- encoders are assigned the type
+             ch.qos.logback.classic.encoder.PatternLayoutEncoder by default -->
+        <encoder>
+            <pattern>%-4relative [%thread] %-5level %logger{35} - %msg %n</pattern>
+        </encoder>
+    </appender>
+
     <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
         <appender-ref ref="FILE" />
     </appender>
@@ -29,6 +37,7 @@
     <logger name="kafka" level="WARN"/>
 
     <root level="INFO">
+        <appender-ref ref="STDOUT" />
         <appender-ref ref="ASYNC_FILE" />
     </root>
 </configuration>
